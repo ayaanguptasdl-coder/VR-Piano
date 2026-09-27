@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>VR Real Piano</title>
+
+    ```
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+        }
+
+        #info {
+            position: fixed;
+            top: 15px;
+            left: 15px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            font-family: Arial;
+            line-height: 1.5;
+        }
+    </style>
+    ```
+
+</head>
+
+<body>
+
+    <div id="info">
+        🎹 VR REAL PIANO<br>
+        Click the keys or use VR controllers.<br>
+        White keys: C D E F G A B<br>
+        Black keys: C# D# F# G# A#
+    </div>
+
+    <a-scene background="color: #111" renderer="colorManagement: true" webxr="referenceSpaceType: local-floor">
+
+        ```
+        <!-- LIGHTS -->
+
+        <a-entity light="type: ambient; intensity: 1.5">
+        </a-entity>
+
+        <a-entity light="type: directional; intensity: 2" position="0 5 4">
+        </a-entity>
+
+
+        <!-- FLOOR -->
+
+        <a-plane position="0 0 0" rotation="-90 0 0" width="12" height="12" color="#202020">
+        </a-plane>
+
+
+        <!-- PIANO BODY -->
+
+        <a-box position="0 1.05 -2.5" width="7" height="1.5" depth="1.5" color="#171717" shadow>
+        </a-box>
+
+
+        <!-- WOODEN TOP -->
+
+        <a-box position="0 1.82 -2.5" width="7.2" height="0.12" depth="1.7" color="#3b2114">
+        </a-box>
+
+
+        <!-- PIANO LEGS -->
+
+        <a-cylinder position="-2.8 0.35 -2.5" radius="0.15" height="1.4" color="#171717">
+        </a-cylinder>
+
+        <a-cylinder position="2.8 0.35 -2.5" radius="0.15" height="1.4" color="#171717">
+        </a-cylinder>
+
+
+        <!-- KEYBOARD AREA -->
+
+        <a-entity id="keyboard" position="0 1.55 -1.72">
+        </a-entity>
+
+
+        <!-- LEFT VR CONTROLLER -->
+
+        <a-entity laser-controls="hand: left" raycaster="objects: .piano-key" line="color: yellow">
+        </a-entity>
+
+
+        <!-- RIGHT VR CONTROLLER -->
+
+        <a-entity laser-controls="hand: right" raycaster="objects: .piano-key" line="color: yellow">
+        </a-entity>
+
+
+        <!-- CAMERA -->
+
+        <a-entity position="0 1.7 1">
+
+            <a-camera></a-camera>
+
+        </a-entity>
+        ```
+
+    </a-scene>
+
+    <script>
+
+        /* =====================================================
+           AUDIO ENGINE
+           ===================================================== */
+
+        const AudioContext =
+            window.AudioContext ||
+            window.webkitAudioContext;
+
+        let audioContext = null;
+
+        let masterGain = null;
+
+
+        /* =====================================================
+           START AUDIO
+           ===================================================== */
+
+        function startAudio() {
+
+            if (!audioContext) {
+
+                audioContext =
+                    new AudioContext();
+
+                masterGain =
+                    audioContext.createGain();
+
+                // 100% volume
+                masterGain.gain.value = 1.0;
+
+                masterGain.connect(
+                    audioContext.destination
+                );
+            }
+
+            if (audioContext.state === "suspended") {
+
+                audioContext.resume();
+
+            }
+        }
+
+
+        /* =====================================================
+           PIANO NOTES
+           ===================================================== */
+
+        /*
+            Frequencies are based on equal temperament
+            with A4 = 440 Hz.
+        */
+
+        const notes = {
+
+            "C4": 261.63,
+            "C#4": 277.18,
+            "D4": 293.66,
+            "D#4": 311.13,
+            "E4": 329.63,
+            "F4": 349.23,
+            "F#4": 369.99,
+            "G4": 392.00,
+            "G#4": 415.30,
+            "A4": 440.00,
+            "A#4": 466.16,
+            "B4": 493.88,
+
+            "C5": 523.25,
+            "C#5": 554.37,
+            "D5": 587.33,
+            "D#5": 622.25,
+            "E5": 659.25,
+            "F5": 698.46,
+            "F#5": 739.99,
+            "G5": 783.99,
+            "G#5": 830.61,
+            "A5": 880.00,
+            "A#5": 932.33,
+            "B5": 987.77
+
+        };
+
+
+        /* =====================================================
+           PLAY PIANO NOTE
+           ===================================================== */
+
+        function playNote(note) {
+
+            startAudio();
+
+
+            const frequency =
+                notes[note];
+
+            if (!frequency) {
+                return;
+            }
+
+
+            /*
+               Piano sound uses several harmonics
+               to make it sound more natural.
+            */
+
+            const now =
+                audioContext.currentTime;
+
+
+            const noteGain =
+                audioContext.createGain();
+
+
+            noteGain.connect(
+                masterGain
+            );
+
+
+            noteGain.gain.setValueAtTime(
+                0.0001,
+                now
+            );
+
+
+            noteGain.gain.exponentialRampToValueAtTime(
+                0.75,
+                now + 0.008
+            );
+
+
+            noteGain.gain.exponentialRampToValueAtTime(
+                0.001,
+                now + 2.2
+            );
+
+
+            /*
+               Main piano tone
+            */
+
+            const oscillator =
+                audioContext.createOscillator();
+
+
+            oscillator.type =
+                "triangle";
+
+
+            oscillator.frequency.setValueAtTime(
+                frequency,
+                now
+            );
+
+
+            oscillator.connect(
+                noteGain
+            );
+
+
+            /*
+               Second harmonic
+            */
+
+            const harmonic =
+                audioContext.createOscillator();
+
+
+            const harmonicGain =
+                audioContext.createGain();
+
+
+            harmonic.type =
+                "sine";
+
+
+            harmonic.frequency.setValueAtTime(
+                frequency * 2,
+                now
+            );
+
+
+            harmonicGain.gain.value =
+                0.22;
+
+
+            harmonic.connect(
+                harmonicGain
+            );
+
+
+            harmonicGain.connect(
+                noteGain
+            );
+
+
+            /*
+               Start
+            */
+
+            oscillator.start(now);
+
+            harmonic.start(now);
+
+
+            /*
+               Stop
+            */
+
+            oscillator.stop(
+                now + 2.3
+            );
+
+            harmonic.stop(
+                now + 2.3
+            );
+
+        }
+
+
+        /* =====================================================
+           PIANO KEY COMPONENT
+           ===================================================== */
+
+        AFRAME.registerComponent(
+            "piano-key",
+            {
+
+                schema: {
+
+                    note: {
+                        type: "string"
+                    }
+
+                },
+
+
+                init: function () {
+
+                    const key =
+                        this.el;
+
+
+                    key.addEventListener(
+                        "click",
+                        () => {
+
+                            playNote(
+                                this.data.note
+                            );
+
+
+                            pressKey(key);
+
+                        }
+                    );
+
+
+                    key.addEventListener(
+                        "mouseenter",
+                        () => {
+
+                            key.setAttribute(
+                                "material",
+                                "color",
+                                "#eeeeee"
+                            );
+
+                        }
+                    );
+
+
+                    key.addEventListener(
+                        "mouseleave",
+                        () => {
+
+                            const type =
+                                key.getAttribute(
+                                    "data-key-type"
+                                );
+
+                            if (type === "black") {
+
+                                key.setAttribute(
+                                    "material",
+                                    "color",
+                                    "#111111"
+                                );
+
+                            } else {
+
+                                key.setAttribute(
+                                    "material",
+                                    "color",
+                                    "#ffffff"
+                                );
+
+                            }
+
+                        }
+                    );
+
+                }
+
+            }
+        );
+
+
+        /* =====================================================
+           PRESS ANIMATION
+           ===================================================== */
+
+        function pressKey(key) {
+
+            const originalY =
+                key.object3D.position.y;
+
+
+            key.object3D.position.y =
+                originalY - 0.045;
+
+
+            setTimeout(
+                () => {
+
+                    key.object3D.position.y =
+                        originalY;
+
+                },
+                100
+            );
+
+        }
+
+
+        /* =====================================================
+           CREATE WHITE KEYS
+           ===================================================== */
+
+        const keyboard =
+            document.getElementById(
+                "keyboard"
+            );
+
+
+        const whiteNotes = [
+
+            "C4",
+            "D4",
+            "E4",
+            "F4",
+            "G4",
+            "A4",
+            "B4",
+
+            "C5",
+            "D5",
+            "E5",
+            "F5",
+            "G5",
+            "A5",
+            "B5"
+
+        ];
+
+
+        const whiteWidth =
+            0.45;
+
+
+        whiteNotes.forEach(
+            (note, index) => {
+
+                const key =
+                    document.createElement(
+                        "a-box"
+                    );
+
+
+                key.setAttribute(
+                    "class",
+                    "piano-key"
+                );
+
+
+                key.setAttribute(
+                    "piano-key",
+                    "note: " + note
+                );
+
+
+                key.setAttribute(
+                    "data-key-type",
+                    "white"
+                );
+
+
+                key.setAttribute(
+                    "position",
+                    `${(index - 6.5) * whiteWidth} 0 0`
+                );
+
+
+                key.setAttribute(
+                    "width",
+                    "0.42"
+                );
+
+
+                key.setAttribute(
+                    "height",
+                    "0.15"
+                );
+
+
+                key.setAttribute(
+                    "depth",
+                    "1.45"
+                );
+
+
+                key.setAttribute(
+                    "color",
+                    "#ffffff"
+                );
+
+
+                key.setAttribute(
+                    "shadow",
+                    ""
+                );
+
+
+                keyboard.appendChild(
+                    key
+                );
+
+            }
+        );
+
+
+        /* =====================================================
+           BLACK KEYS
+           ===================================================== */
+
+        const blackKeys = [
+
+            {
+                note: "C#4",
+                position: -5.5
+            },
+
+            {
+                note: "D#4",
+                position: -4.5
+            },
+
+            {
+                note: "F#4",
+                position: -2.5
+            },
+
+            {
+                note: "G#4",
+                position: -1.5
+            },
+
+            {
+                note: "A#4",
+                position: -0.5
+            },
+
+            {
+                note: "C#5",
+                position: 1.5
+            },
+
+            {
+                note: "D#5",
+                position: 2.5
+            },
+
+            {
+                note: "F#5",
+                position: 4.5
+            },
+
+            {
+                note: "G#5",
+                position: 5.5
+            },
+
+            {
+                note: "A#5",
+                position: 6.5
+            }
+
+        ];
+
+
+        blackKeys.forEach(
+            data => {
+
+                const key =
+                    document.createElement(
+                        "a-box"
+                    );
+
+
+                key.setAttribute(
+                    "class",
+                    "piano-key"
+                );
+
+
+                key.setAttribute(
+                    "piano-key",
+                    "note: " + data.note
+                );
+
+
+                key.setAttribute(
+                    "data-key-type",
+                    "black"
+                );
+
+
+                key.setAttribute(
+                    "position",
+                    `${data.position * whiteWidth / 1} 0.10 -0.22`
+                );
+
+
+                key.setAttribute(
+                    "width",
+                    "0.27"
+                );
+
+
+                key.setAttribute(
+                    "height",
+                    "0.22"
+                );
+
+
+                key.setAttribute(
+                    "depth",
+                    "0.90"
+                );
+
+
+                key.setAttribute(
+                    "color",
+                    "#111111"
+                );
+
+
+                key.setAttribute(
+                    "shadow",
+                    ""
+                );
+
+
+                keyboard.appendChild(
+                    key
+                );
+
+            }
+        );
+
+
+        /* =====================================================
+           COMPUTER KEYBOARD CONTROLS
+           ===================================================== */
+
+        const computerKeys = {
+
+            "z": "C4",
+            "s": "C#4",
+            "x": "D4",
+            "d": "D#4",
+            "c": "E4",
+            "v": "F4",
+            "g": "F#4",
+            "b": "G4",
+            "h": "G#4",
+            "n": "A4",
+            "j": "A#4",
+            "m": "B4",
+
+            "q": "C5",
+            "2": "C#5",
+            "w": "D5",
+            "3": "D#5",
+            "e": "E5",
+            "r": "F5",
+            "5": "F#5",
+            "t": "G5",
+            "6": "G#5",
+            "y": "A5",
+            "7": "A#5",
+            "u": "B5"
+
+        };
+
+
+        document.addEventListener(
+            "keydown",
+            function (event) {
+
+                if (
+                    event.repeat
+                ) {
+                    return;
+                }
+
+
+                const note =
+                    computerKeys[
+                    event.key.toLowerCase()
+                    ];
+
+
+                if (note) {
+
+                    playNote(note);
+
+                }
+
+            }
+        );
+
+    </script>
+
+</body>
+
+</html>
